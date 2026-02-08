@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>英語 読上算 v7</title>
+    <style>
+        :root { --primary: #2196F3; --bg: #f4f4f9; }
+        body { font-family: sans-serif; margin: 0; background: var(--bg); display: flex; flex-direction: column; height: 100vh; }
+        header { background: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .container { flex: 1; padding: 15px; display: flex; flex-direction: column; max-width: 600px; margin: auto; width: 100%; box-sizing: border-box; }
+        .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 12px; cursor: pointer; border: 1px solid transparent; }
+        .problem-area { flex: 1; display: flex; flex-direction: column; text-align: right; overflow-y: auto; background: white; border-radius: 12px; padding: 15px; margin-bottom: 12px; border: 1px solid #ddd; }
+        .problem-text { font-family: 'Courier New', monospace; white-space: pre-wrap; line-height: 1.4; color: #333; font-weight: bold; }
+        .answer-box { font-size: 2.5rem; font-weight: 800; text-align: center; border: 3px solid var(--primary); border-radius: 12px; padding: 15px; margin-bottom: 12px; background: #e3f2fd; color: #1565c0; }
+        .btn { border: none; border-radius: 12px; color: white; font-weight: bold; cursor: pointer; margin-bottom: 10px; width: 100%; padding: 18px; font-size: 1.4rem; }
+        #btnSpeak { background: #4CAF50; }
+        #btnStop { background: #f44336; display: none; }
+        .btn-sub { background: #607d8b; }
+        #settingsModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; overflow-y: auto; }
+        .modal-content { background: white; width: 85%; max-width: 400px; margin: 20px auto; padding: 25px; border-radius: 20px; }
+        label { display: block; margin-top: 15px; font-weight: bold; font-size: 0.9rem; color: #555; }
+        select, input[type="range"] { width: 100%; padding: 10px; margin: 5px 0; box-sizing: border-box; }
+        .val-display { float: right; color: var(--primary); font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h2 style="margin:0; font-size: 1.2rem; color: var(--primary);">英語 読上算 v7</h2>
+    <button onclick="openSettings()" style="background:none; border:none; font-size:1.8rem; cursor:pointer;">⚙️</button>
+</header>
+
+<div class="container">
+    <div class="card" onclick="openSettings()">
+        <div style="font-size: 0.8rem; color: #777;">現在の設定（タップで変更）</div>
+        <div id="currentSettingsText" style="font-weight: bold; margin-top: 4px;">---</div>
+    </div>
+
+    <div class="problem-area">
+        <div id="problemDisplay" class="problem-text" style="display:none;"></div>
+        <div id="placeholder" style="margin:auto; text-align:center; color:#999;">Ready?</div>
+    </div>
+
+    <div id="answerDisplay" class="answer-box" style="display:none;"></div>
+    <div id="timerDisplay" style="text-align:center; margin-bottom:10px; font-weight:bold; font-size: 1.2rem; color: #f44336; display:none;">0.0s</div>
+
+    <button id="btnSpeak" class="btn" onclick="startSpeaking()">SPEAK</button>
+    <button id="btnStop" class="btn" onclick="stopSpeaking()">STOP</button>
+    <button id="btnAnswer" class="btn btn-sub" onclick="showAnswer()">こたえを見る</button>
+    <button id="btnNext" class="btn btn-sub" onclick="generateNewProblem()">次のもんだい</button>
+</div>
+
+<div id="settingsModal">
+    <div class="modal-content">
+        <h3 style="margin-top:0;">トレーニング設定</h3>
+        <label>桁数</label>
+        <select id="digitMode"></select>
+        <label>口数</label>
+        <select id="mouths"></select>
+        <label>声の速さ (Speed) <span id="speedVal" class="val-display">5</span></label>
+        <input type="range" id="speedLevel" min="1" max="10" value="5">
+        <label>読上間隔 (Interval) <span id="intervalVal" class="val-display">0.5s</span></label>
+        <input type="range" id="intervalLevel" min="0" max="20" value="5">
+        <button class="btn" onclick="closeSettings()" style="background:var(--primary); margin-top:25px;">保存</button>
+    </div>
+</div>
+
+<script>
+    const digitModes = {
+        fixed1: '1桁そろい', fixed2: '2桁そろい', fixed3: '3桁そろい', fixed4: '4桁そろい', fixed5: '5桁そろい',
+        range3to5: '3～5桁', range3to6: '3～6桁', range4to7: '4～7桁', range5to8: '5～8桁', range7to11: '7～11桁', range7to13: '7～13桁'
+    };
+
+    let settings = { mode: 'range4to7', mouths: 5, speed: 5, interval: 5 };
+    let terms = [];
+    let answer = 0;
+    let isSpeaking = false;
+    let startTime;
+    let timerInterval;
+    const synth = window.speechSynthesis;
+
+    window.onload = () => {
+        const modeSelect = document.getElementById('digitMode');
+        for (let key in digitModes) modeSelect.add(new Option(digitModes[key], key));
+        const mouthsSelect = document.getElementById('mouths');
+        for (let i = 2; i <= 15; i++) mouthsSelect.add(new Option(i + '口', i));
+        document.getElementById('speedLevel').oninput = (e) => document.getElementById('speedVal').innerText = e.target.value;
+        document.getElementById('intervalLevel').oninput = (e) => document.getElementById('intervalVal').innerText = (e.target.value / 10).toFixed(1) + 's';
+        loadSettings();
+        generateNewProblem();
+    };
+
+    function loadSettings() {
+        const saved = localStorage.getItem('yomiageV7');
+        if (saved) settings = JSON.parse(saved);
+        updateUI();
+    }
+
+    function updateUI() {
+        document.getElementById('currentSettingsText').innerText = 
+            `${digitModes[settings.mode]} / ${settings.mouths}口 / 速さ${settings.speed} / 間隔${(settings.interval/10).toFixed(1)}s`;
+        document.getElementById('digitMode').value = settings.mode;
+        document.getElementById('mouths').value = settings.mouths;
+        document.getElementById('speedLevel').value = settings.speed;
+        document.getElementById('speedVal').innerText = settings.speed;
+        document.getElementById('intervalLevel').value = settings.interval;
+        document.getElementById('intervalVal').innerText = (settings.interval / 10).toFixed(1) + 's';
+    }
+
+    function randomAnzanNumber(digits) {
+        let res = (Math.floor(Math.random() * 9) + 1).toString();
+        for (let i = 1; i < digits; i++) res += Math.floor(Math.random() * 10).toString();
+        return parseInt(res);
+    }
+
+    function generateNewProblem() {
+        stopSpeaking();
+        terms = [];
+        let m = settings.mode, minD, maxD;
+        if (m.startsWith('fixed')) { minD = maxD = parseInt(m.replace('fixed', '')); }
+        else { let range = m.replace('range', '').split('to'); minD = parseInt(range[0]); maxD = parseInt(range[1]); }
+        for (let i = 0; i < settings.mouths; i++) terms.push(randomAnzanNumber(Math.floor(Math.random() * (maxD - minD + 1)) + minD));
+        answer = terms.reduce((a, b) => a + b, 0);
+        document.getElementById('problemDisplay').style.display = 'none';
+        document.getElementById('placeholder').style.display = 'block';
+        document.getElementById('answerDisplay').style.display = 'none';
+        document.getElementById('timerDisplay').style.display = 'none';
+        document.getElementById('problemDisplay').innerText = terms.map(n => n.toLocaleString()).join('\n');
+    }
+
+    async function startSpeaking() {
+        isSpeaking = true;
+        document.getElementById('btnSpeak').style.display = 'none';
+        document.getElementById('btnStop').style.display = 'block';
+        document.getElementById('timerDisplay').style.display = 'block';
+        startTime = Date.now();
+        timerInterval = setInterval(() => {
+            document.getElementById('timerDisplay').innerText = ((Date.now() - startTime) / 1000).toFixed(1) + 's';
+        }, 100);
+
+        let rate = 0.55 + (settings.speed * 0.11); 
+        const intervalMs = settings.interval * 100;
+
+        // 1. Start with を読む
+        await speakAsync("Start with.", 0.9);
+
+        if (intervalMs === 0) {
+            // 2. 間隔0なら、全数字を一気読み（ラグなし）
+            let fullText = "";
+            for (let i = 0; i < terms.length; i++) {
+                if (i === terms.length - 1 && terms.length >= 2) fullText += "and ";
+                fullText += numberToEnglish(terms[i]) + ". ";
+            }
+            await speakAsync(fullText, rate);
+        } else {
+            // 3. 間隔があるなら、1口ずつ再生して正確なポーズを入れる
+            for (let i = 0; i < terms.length; i++) {
+                if (!isSpeaking) break;
+                let text = (i === terms.length - 1 && terms.length >= 2 ? "and " : "") + numberToEnglish(terms[i]);
+                await speakAsync(text, rate);
+                if (i < terms.length - 1 && isSpeaking) {
+                    await new Promise(r => setTimeout(r, intervalMs));
+                }
+            }
+        }
+
+        stopSpeaking();
+    }
+
+    function speakAsync(text, rate) {
+        return new Promise((resolve) => {
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.lang = 'en-US';
+            utter.rate = rate;
+            utter.onend = resolve;
+            utter.onerror = resolve;
+            synth.speak(utter);
+        });
+    }
+
+    function stopSpeaking() {
+        isSpeaking = false;
+        synth.cancel();
+        clearInterval(timerInterval);
+        document.getElementById('btnSpeak').style.display = 'block';
+        document.getElementById('btnStop').style.display = 'none';
+    }
+
+    function numberToEnglish(n) {
+        if (n === 0) return 'zero';
+        const units = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+        const teens = ['ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+        const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+        const scales = ['', 'thousand', 'million', 'billion', 'trillion'];
+        let res = '', groupIdx = 0, tempN = n;
+        while (tempN > 0) {
+            let chunk = tempN % 1000;
+            if (chunk > 0) {
+                let s = '', h = Math.floor(chunk / 100), r = chunk % 100;
+                if (h > 0) s += units[h] + ' hundred ';
+                if (r > 0) {
+                    if (r < 10) s += units[r];
+                    else if (r < 20) s += teens[r - 10];
+                    else s += tens[Math.floor(r / 10)] + (r % 10 > 0 ? '-' + units[r % 10] : '');
+                }
+                res = s.trim() + ' ' + scales[groupIdx] + ' ' + res;
+            }
+            tempN = Math.floor(tempN / 1000); groupIdx++;
+        }
+        return res.trim();
+    }
+
+    function showAnswer() {
+        document.getElementById('problemDisplay').style.display = 'block';
+        document.getElementById('placeholder').style.display = 'none';
+        document.getElementById('answerDisplay').style.display = 'block';
+        document.getElementById('answerDisplay').innerText = answer.toLocaleString();
+    }
+    function openSettings() { document.getElementById('settingsModal').style.display = 'block'; }
+    function closeSettings() {
+        settings.mode = document.getElementById('digitMode').value;
+        settings.mouths = parseInt(document.getElementById('mouths').value);
+        settings.speed = parseInt(document.getElementById('speedLevel').value);
+        settings.interval = parseInt(document.getElementById('intervalLevel').value);
+        localStorage.setItem('yomiageV7', JSON.stringify(settings));
+        updateUI();
+        document.getElementById('settingsModal').style.display = 'none';
+        generateNewProblem();
+    }
+</script>
+</body>
+</html>
