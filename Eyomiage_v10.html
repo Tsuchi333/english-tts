@@ -51,7 +51,8 @@ select,input[type=range]{width:100%;padding:10px;margin:5px 0;box-sizing:border-
 <h3 style="margin-top:0">トレーニング設定</h3>
 <label>出題モード</label>
 <select id="kind"><option value="contest">大会モード</option><option value="free">フリー設定</option></select>
-<div id="boxC"><label>大会の出題</label><select id="preset"></select></div>
+<div id="boxC"><label>大会の出題</label><select id="preset"></select>
+<div style="font-size:.75rem;color:#888">★＝保存した設定（なしは目標秒数からの初期値）</div></div>
 <div id="boxF">
 <label>桁数</label><select id="digitMode"></select>
 <label>口数</label><select id="mouths"></select>
@@ -62,12 +63,12 @@ select,input[type=range]{width:100%;padding:10px;margin:5px 0;box-sizing:border-
 <input type="range" id="speedLevel" min="1" max="8" step="0.5" value="5">
 <label>読上間隔 <span id="intervalVal" class="val">0.5s</span></label>
 <input type="range" id="intervalLevel" min="0" max="20" value="5">
-<label>声の種類</label><select id="voice"><option value="">自動（標準の声）</option></select>
 <div id="estBox">推定 ---</div>
 <div id="boxR" style="display:flex;gap:8px;margin-top:10px">
 <button class="btn btn-sub" style="font-size:.85rem;padding:10px;margin:0" onclick="resetInit(false)">この出題を初期値に</button>
 <button class="btn btn-sub" style="font-size:.85rem;padding:10px;margin:0" onclick="resetInit(true)">全出題を初期値に</button>
 </div>
+<div id="resetMsg" style="font-size:.85rem;color:#2e7d32;margin-top:6px;min-height:1.2em"></div>
 <button class="btn" onclick="closeSettings()" style="background:var(--p);margin-top:25px">保存</button>
 </div>
 </div>
@@ -213,7 +214,7 @@ function loadSettings(){
  try{const c=JSON.parse(localStorage.getItem(KK));if(c&&c.h){K=c;K.bh=K.bh||[]}}catch(e){}
  if(!digitModes[S.mode])S.mode='range4to7';
  if(!presets[S.preset])S.preset=0;
- S.speed=Math.min(8,Math.max(1,+S.speed||5));S.voice=S.voice||'';
+ S.speed=Math.min(8,Math.max(1,+S.speed||5));S.voice='';
  S.ps=S.ps||{};const e=S.ps[pk(S)];
  if(e){S.speed=Math.min(8,Math.max(1,+e.speed||5));S.interval=+e.interval>=0?+e.interval:5}
  S.ps[pk(S)]={speed:S.speed,interval:S.interval};
@@ -229,7 +230,10 @@ function syncMinus(v){
  sl.max=mx;sl.value=Math.min(v,mx);$('minusCountVal').innerText=sl.value+'回';
 }
 function readForm(){
- return{kind:$('kind').value,preset:+$('preset').value,mode:$('digitMode').value,mouths:+$('mouths').value,minusCount:+$('minusCountLevel').value,speed:+$('speedLevel').value,interval:+$('intervalLevel').value,voice:$('voice').value};
+ return{kind:$('kind').value,preset:+$('preset').value,mode:$('digitMode').value,mouths:+$('mouths').value,minusCount:+$('minusCountLevel').value,speed:+$('speedLevel').value,interval:+$('intervalLevel').value,voice:''};
+}
+function labelPresets(){
+ [...$('preset').options].forEach((o,i)=>{o.text=presets[i][0]+'（目標 '+presets[i][4]+'）'+((S.ps['c'+i]||(fk==='c'+i&&dirty[fk]))?' ★':'')});
 }
 function refresh(e){
  if(e&&e.target&&e.target.id==='mouths')syncMinus(+$('minusCountLevel').value);
@@ -246,11 +250,12 @@ function refresh(e){
  $('boxF').style.display=f.kind==='free'?'block':'none';
  $('minusCountVal').innerText=f.minusCount+'回';
  $('speedVal').innerText=f.speed;$('intervalVal').innerText=(f.interval/10).toFixed(1)+'s';
+ labelPresets();
  $('estBox').innerText='推定 約'+estSec(f).toFixed(0)+'秒（Start with後・目安）';
 }
 function openSettings(){
  $('kind').value=S.kind;$('preset').value=S.preset;$('digitMode').value=S.mode;$('mouths').value=S.mouths;
- fillVoices(S.voice);fk=pk(S);dirty={};syncMinus(S.minusCount);$('speedLevel').value=S.speed;$('intervalLevel').value=S.interval;
+ fk=pk(S);dirty={};syncMinus(S.minusCount);$('speedLevel').value=S.speed;$('intervalLevel').value=S.interval;
  refresh();$('settingsModal').style.display='block';
 }
 // 記憶した速さ・間隔を消して、目標秒数に合わせた初期値に戻す
@@ -259,11 +264,9 @@ function resetInit(all){
  if(all)Object.keys(S.ps).forEach(k=>{if(k[0]==='c')delete S.ps[k]});else delete S.ps[pk(f)];
  dirty={};const g=gapOf(f.preset);
  $('intervalLevel').value=g;$('speedLevel').value=autoSpeed(f.preset,g,f.voice);refresh();
-}
-function fillVoices(cur){
- const sel=$('voice');sel.length=1;
- speechSynthesis.getVoices().filter(v=>/^en/i.test(v.lang)).forEach(v=>sel.add(new Option(v.name+' ('+v.lang+')',v.name)));
- sel.value=[...sel.options].some(o=>o.value===cur)?cur:'';
+ try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
+ $('resetMsg').innerText=(all?'全出題':'この出題')+'を初期値に戻しました（速さ'+$('speedLevel').value+' / 間隔'+($('intervalLevel').value/10).toFixed(1)+'s）';
+ clearTimeout(window._rm);window._rm=setTimeout(()=>{$('resetMsg').innerText=''},4000);
 }
 function closeSettings(){
  const ps=S.ps||{};S=readForm();S.minusCount=Math.min(S.minusCount,maxMinus(S.mouths));
@@ -282,7 +285,6 @@ function generateNewProblem(){
 function setBusy(b){$('btnSpeak').style.display=b?'none':'block';$('btnStop').style.display=b?'block':'none'}
 function mkU(text,rate){
  const u=new SpeechSynthesisUtterance(text);u.lang='en-US';u.rate=rate;
- const v=S.voice&&speechSynthesis.getVoices().find(x=>x.name===S.voice);if(v){u.voice=v;u.lang=v.lang}
  return u;
 }
 function startSpeaking(){
@@ -339,7 +341,6 @@ window.onload=()=>{
  for(let i=2;i<=15;i++)$('mouths').add(new Option(i+'口',i));
  $('settingsModal').addEventListener('input',refresh);
  window.onbeforeunload=()=>synth.cancel();
- synth.onvoiceschanged=()=>{if($('settingsModal').style.display==='block')fillVoices($('voice').value)};
  loadSettings();updateUI();generateNewProblem();
 };
 </script>
