@@ -64,6 +64,10 @@ select,input[type=range]{width:100%;padding:10px;margin:5px 0;box-sizing:border-
 <input type="range" id="intervalLevel" min="0" max="20" value="5">
 <label>声の種類</label><select id="voice"><option value="">自動（標準の声）</option></select>
 <div id="estBox">推定 ---</div>
+<div id="boxR" style="display:flex;gap:8px;margin-top:10px">
+<button class="btn btn-sub" style="font-size:.85rem;padding:10px;margin:0" onclick="resetInit(false)">この出題を初期値に</button>
+<button class="btn btn-sub" style="font-size:.85rem;padding:10px;margin:0" onclick="resetInit(true)">全出題を初期値に</button>
+</div>
 <button class="btn" onclick="closeSettings()" style="background:var(--p);margin-top:25px">保存</button>
 </div>
 </div>
@@ -238,6 +242,7 @@ function refresh(e){
  }
  const f=readForm();
  $('boxC').style.display=f.kind==='contest'?'block':'none';
+ $('boxR').style.display=f.kind==='contest'?'flex':'none';
  $('boxF').style.display=f.kind==='free'?'block':'none';
  $('minusCountVal').innerText=f.minusCount+'回';
  $('speedVal').innerText=f.speed;$('intervalVal').innerText=(f.interval/10).toFixed(1)+'s';
@@ -247,6 +252,13 @@ function openSettings(){
  $('kind').value=S.kind;$('preset').value=S.preset;$('digitMode').value=S.mode;$('mouths').value=S.mouths;
  fillVoices(S.voice);fk=pk(S);dirty={};syncMinus(S.minusCount);$('speedLevel').value=S.speed;$('intervalLevel').value=S.interval;
  refresh();$('settingsModal').style.display='block';
+}
+// 記憶した速さ・間隔を消して、目標秒数に合わせた初期値に戻す
+function resetInit(all){
+ const f=readForm();
+ if(all)Object.keys(S.ps).forEach(k=>{if(k[0]==='c')delete S.ps[k]});else delete S.ps[pk(f)];
+ dirty={};const g=gapOf(f.preset);
+ $('intervalLevel').value=g;$('speedLevel').value=autoSpeed(f.preset,g,f.voice);refresh();
 }
 function fillVoices(cur){
  const sel=$('voice');sel.length=1;
