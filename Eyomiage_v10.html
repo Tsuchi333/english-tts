@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>英語 読上算 v10</title>
+<style>
+:root{--p:#2196F3;--bg:#f4f4f9}
+body{font-family:sans-serif;margin:0;background:var(--bg);display:flex;flex-direction:column;height:100vh}
+header{background:#fff;padding:10px 20px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 2px 4px rgba(0,0,0,.1)}
+.container{flex:1;padding:15px;display:flex;flex-direction:column;max-width:600px;margin:auto;width:100%;box-sizing:border-box}
+.card{background:#fff;padding:15px;border-radius:12px;box-shadow:0 2px 4px rgba(0,0,0,.05);margin-bottom:12px;cursor:pointer}
+.problem-area{flex:1;display:flex;flex-direction:column;text-align:right;overflow-y:auto;background:#fff;border-radius:12px;padding:15px;margin-bottom:12px;border:1px solid #ddd}
+.problem-text{font-family:'Courier New',monospace;white-space:pre-wrap;line-height:1.4;color:#333;font-weight:bold}
+.answer-box{font-size:2.2rem;font-weight:800;text-align:center;border:3px solid var(--p);border-radius:12px;padding:15px;margin-bottom:12px;background:#e3f2fd;color:#1565c0}
+.btn{border:none;border-radius:12px;color:#fff;font-weight:bold;cursor:pointer;margin-bottom:10px;width:100%;padding:18px;font-size:1.4rem}
+#btnSpeak{background:#4CAF50}#btnStop{background:#f44336;display:none}.btn-sub{background:#607d8b}
+#settingsModal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:1000;overflow-y:auto}
+.modal-content{background:#fff;width:85%;max-width:400px;margin:20px auto;padding:25px;border-radius:20px}
+label{display:block;margin-top:15px;font-weight:bold;font-size:.9rem;color:#555}
+select,input[type=range]{width:100%;padding:10px;margin:5px 0;box-sizing:border-box}
+.val{float:right;color:var(--p);font-weight:bold}
+#estBox{margin-top:15px;padding:10px;background:#fff8e1;border-radius:8px;font-weight:bold;color:#e65100}
+</style>
+</head>
+<body>
+<header>
+<h2 style="margin:0;font-size:1.2rem;color:var(--p)">英語 読上算 v10</h2>
+<button onclick="openSettings()" style="background:none;border:none;font-size:1.8rem;cursor:pointer">⚙️</button>
+</header>
+<div class="container">
+<div class="card" onclick="openSettings()">
+<div style="font-size:.8rem;color:#777">現在の設定（タップで変更）</div>
+<div id="curText" style="font-weight:bold;margin-top:4px">---</div>
+<div id="curEst" style="font-size:.85rem;color:#e65100;margin-top:4px"></div>
+</div>
+<div class="problem-area">
+<div id="problemDisplay" class="problem-text" style="display:none"></div>
+<div id="placeholder" style="margin:auto;text-align:center;color:#999">Ready?</div>
+</div>
+<div id="answerDisplay" class="answer-box" style="display:none"></div>
+<div id="timerDisplay" style="text-align:center;margin-bottom:10px;font-weight:bold;font-size:1.2rem;color:#f44336;display:none">0.0s</div>
+<button id="btnSpeak" class="btn" onclick="startSpeaking()">SPEAK</button>
+<button id="btnStop" class="btn" onclick="stopSpeaking()">STOP</button>
+<button class="btn btn-sub" onclick="showAnswer()">こたえを見る</button>
+<button class="btn btn-sub" onclick="generateNewProblem()">次のもんだい</button>
+</div>
+
+<div id="settingsModal">
+<div class="modal-content">
+<h3 style="margin-top:0">トレーニング設定</h3>
+<label>出題モード</label>
+<select id="kind"><option value="contest">大会モード</option><option value="free">フリー設定</option></select>
+<div id="boxC"><label>大会の出題</label><select id="preset"></select></div>
+<div id="boxF">
+<label>桁数</label><select id="digitMode"></select>
+<label>口数</label><select id="mouths"></select>
+<label>ひき算の回数 <span id="minusCountVal" class="val">0回</span></label>
+<input type="range" id="minusCountLevel" min="0" max="1" value="0">
+</div>
+<label>声の速さ <span id="speedVal" class="val">5</span></label>
+<input type="range" id="speedLevel" min="1" max="8" step="0.5" value="5">
+<label>読上間隔 <span id="intervalVal" class="val">0.5s</span></label>
+<input type="range" id="intervalLevel" min="0" max="20" value="5">
+<label>声の種類</label><select id="voice"><option value="">自動（標準の声）</option></select>
+<div id="estBox">推定 ---</div>
+<button class="btn" onclick="closeSettings()" style="background:var(--p);margin-top:25px">保存</button>
+</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const KEY='yomiageV10',OLD='yomiageV9',KK='yomiageV10cal2';
+const digitModes={fixed1:'1桁そろい',fixed2:'2桁そろい',fixed3:'3桁そろい',fixed4:'4桁そろい',fixed5:'5桁そろい',range3to5:'3～5桁',range3to6:'3～6桁',range4to7:'4～7桁',range5to8:'5～8桁',range7to11:'7～11桁',range9to13:'9～13桁',range7to13:'7～13桁'};
+// [名称,最小桁,最大桁,口数,目標秒数]
+const presets=[['7～13桁 10口',7,13,10,'30秒台前半'],['7～13桁 10口',7,13,10,'40秒程度'],['7～13桁 10口',7,13,10,'45秒程度'],['9～13桁 5口',9,13,5,'20秒程度'],['9～13桁 5口',9,13,5,'25秒程度'],['7～11桁 5口',7,11,5,'25秒程度'],['5～8桁 5口',5,8,5,'25秒程度'],['4～7桁 5口',4,7,5,'25秒程度'],['3～6桁 5口',3,6,5,'25秒程度'],['3～5桁 5口',3,5,5,'25秒程度'],['3桁そろい 5口',3,3,5,'20秒程度'],['2桁そろい 5口',2,2,5,'15秒程度']];
+const SY={seven:2,eleven:3,thirteen:2,fourteen:2,fifteen:2,sixteen:2,seventeen:3,eighteen:2,nineteen:2,twenty:2,thirty:2,forty:2,fifty:2,sixty:2,seventy:3,eighty:2,ninety:2,hundred:2,thousand:2,million:2,billion:2,trillion:2,minus:2};
+let S={ps:{},kind:'contest',preset:0,mode:'range4to7',mouths:5,speed:5,interval:5,minusCount:0};
+let K={b:.15,h:{}},terms=[],answer=0,run=0,t0=0,tm=null;
+const synth=window.speechSynthesis,bags={};
+
+const shuf=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
+const maxMinus=m=>Math.max(0,Math.min(5,Math.floor(m/2),m-3)); // 2口目・最終口は足し算
+const pk=s=>s.kind==='contest'?'c'+s.preset:'f'; // 出題ごとに速さ・間隔を記憶するキー
+let fk='';
+const maxRun=p=>{let r=1,b=p.length?1:0;for(let i=1;i<p.length;i++){r=p[i]===p[i-1]+1?r+1:1;b=Math.max(b,r)}return b};
+
+function cfgOf(s){
+ if(s.kind==='contest'){const p=presets[s.preset],five=p[3]===5;
+  return{label:p[0]+'（'+p[4]+'）',target:p[4],min:p[1],max:p[2],m:p[3],k:five?2:5,fixedPos:five?[2,3]:null,
+   fixedDigits:(p[3]===10&&p[1]===7&&p[2]===13)?[7,8,9,10,11,12,13,7,12,13]:null}}
+ let mn,mx;
+ if(s.mode.startsWith('fixed'))mn=mx=+s.mode.slice(5);else{const r=s.mode.slice(5).split('to');mn=+r[0];mx=+r[1]}
+ return{label:digitModes[s.mode]+' '+s.mouths+'口',min:mn,max:mx,m:s.mouths,k:Math.min(s.minusCount,maxMinus(s.mouths)),fixedPos:null,fixedDigits:null};
+}
+function drawLen(mn,mx){const key=mn+'-'+mx,b=bags[key]||(bags[key]=[]);if(!b.length){for(let d=mn;d<=mx;d++)b.push(d);shuf(b)}return b.pop()}
+function lens(c){
+ if(c.fixedDigits)return shuf(c.fixedDigits.slice());
+ const a=[];
+ if(c.m>=c.max-c.min+1){for(let d=c.min;d<=c.max;d++)a.push(d)}else a.push(c.max); // 最大桁数は必ず入れる
+ while(a.length<c.m)a.push(drawLen(c.min,c.max));
+ return shuf(a);
+}
+// 1口の中で0～9を袋から均等に使い、隣り合う同じ数字・先頭0を避ける
+function mkNum(d){
+ const s=[];let bag=[];
+ while(s.length<d){
+  if(!bag.length)bag=shuf([0,1,2,3,4,5,6,7,8,9]);
+  const p=s[s.length-1],k=bag.findIndex(x=>x!==p&&!(s.length===0&&x===0));
+  if(k<0){bag=[];continue}
+  s.push(bag.splice(k,1)[0]);
+ }
+ return s.join('');
+}
+function pickMinus(c){
+ if(c.fixedPos)return c.fixedPos;
+ const cand=[];for(let i=2;i<=c.m-2;i++)cand.push(i);
+ for(let t=0;t<200;t++){const p=shuf(cand.slice()).slice(0,c.k).sort((a,b)=>a-b);if(maxRun(p)<=3)return p}
+ return null;
+}
+function makeProblem(c){
+ const L=lens(c);
+ for(let k=c.k;k>=0;k--){
+  const cc=Object.assign({},c,{k});
+  for(let t=0;t<400;t++){
+   const mp=pickMinus(cc);if(!mp)break;
+   const ord=shuf(L.slice());let sum=0,ok=true;const tt=[];
+   for(let i=0;i<c.m;i++){
+    const v=+mkNum(ord[i]),neg=mp.includes(i);sum+=neg?-v:v;
+    if(sum<1){ok=false;break}
+    tt.push({val:v,isMinus:neg});
+   }
+   if(ok)return{terms:tt,answer:sum};
+  }
+  if(c.fixedPos)break;
+ }
+ const tt=L.map(d=>({val:+mkNum(d),isMinus:false}));
+ return{terms:tt,answer:tt.reduce((a,x)=>a+x.val,0)};
+}
+
+function numberToEnglish(n){
+ if(n===0)return'zero';
+ const u=['','one','two','three','four','five','six','seven','eight','nine'],te=['ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'],ty=['','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety'],sc=['','thousand','million','billion','trillion'];
+ let res='',g=0,x=n;
+ while(x>0){
+  const ch=x%1000;
+  if(ch>0){let s='';const h=Math.floor(ch/100),r=ch%100;
+   if(h>0)s+=u[h]+' hundred ';
+   if(r>0){if(r<10)s+=u[r];else if(r<20)s+=te[r-10];else s+=ty[Math.floor(r/10)]+(r%10>0?'-'+u[r%10]:'')}
+   res=s.trim()+' '+sc[g]+' '+res;}
+  x=Math.floor(x/1000);g++;
+ }
+ return res.trim();
+}
+function buildScript(tt,iv){
+ const cnt=iv>0?Math.floor(iv/2)+1:0,pz=','.repeat(cnt);let s='';
+ tt.forEach((t,i)=>{
+  if(i===tt.length-1&&tt.length>=2)s+='and ';
+  if(t.isMinus)s+='Minus ';
+  s+=numberToEnglish(t.val)+'. ';
+  if(i<tt.length-1)s+=pz+' ';
+ });
+ return{s,commas:cnt*(tt.length-1)};
+}
+const sylOf=s=>s.toLowerCase().split(/[^a-z]+/).filter(Boolean).reduce((a,w)=>a+(SY[w]||1),0);
+const rateOf=sp=>.55+sp*.11;
+
+// 推定秒数：端末ごとに実測から学習
+function estSec(s){
+ const c=cfgOf(s),sv=JSON.stringify(bags),r=rateOf(s.speed),k=kFor(s.speed,s.voice);let tot=0;
+ for(let i=0;i<12;i++){const p=makeProblem(c),b=buildScript(p.terms,s.interval);tot+=k*sylOf(b.s)/r+b.commas*K.b}
+ Object.keys(bags).forEach(k=>delete bags[k]);Object.assign(bags,JSON.parse(sv));
+ return tot/12;
+}
+// 速さごとに学習（声ごとに別管理）。実測のない速さは近い速さから補間
+function kFor(sp,vn){
+ const H=K.h[vn||'']||{},ks=Object.keys(H).filter(x=>H[x].length).map(Number).sort((a,b)=>a-b);
+ if(!ks.length)return .18;
+ const m=x=>H[x].reduce((a,b)=>a+b)/H[x].length;
+ if(H[sp]&&H[sp].length)return m(sp);
+ const lo=ks.filter(x=>x<sp).pop(),hi=ks.find(x=>x>sp);
+ if(lo!==undefined&&hi!==undefined)return m(lo)+(m(hi)-m(lo))*(sp-lo)/(hi-lo);
+ return m(lo!==undefined?lo:hi);
+}
+function learn(T,x,cm,sp,vn){
+ const ki=(T-cm*K.b)/x;
+ if(ki>.03&&ki<2){
+  const H=K.h[vn||'']||(K.h[vn||'']={});
+  (H[sp]=H[sp]||[]).push(ki);if(H[sp].length>10)H[sp].shift();
+  try{localStorage.setItem(KK,JSON.stringify(K))}catch(e){}
+  updateUI();
+ }
+}
+
+function loadSettings(){
+ try{const sv=localStorage.getItem(KEY)||localStorage.getItem(OLD);
+  if(sv){const o=JSON.parse(sv);Object.assign(S,o);if(!o.kind)S.kind='free'}}catch(e){}
+ try{const c=JSON.parse(localStorage.getItem(KK));if(c&&c.h)K=c}catch(e){}
+ if(!digitModes[S.mode])S.mode='range4to7';
+ if(!presets[S.preset])S.preset=0;
+ S.speed=Math.min(8,Math.max(1,+S.speed||5));S.voice=S.voice||'';
+ S.ps=S.ps||{};const e=S.ps[pk(S)];
+ if(e){S.speed=Math.min(8,Math.max(1,+e.speed||5));S.interval=+e.interval>=0?+e.interval:5}
+ S.ps[pk(S)]={speed:S.speed,interval:S.interval};
+ S.minusCount=Math.min(S.minusCount||0,maxMinus(S.mouths));
+}
+function updateUI(){
+ const c=cfgOf(S);
+ $('curText').innerText=(S.kind==='contest'?'大会｜':'')+c.label+(S.kind==='free'?' / 引算'+c.k+'回':'')+' / 速さ'+S.speed+' / 間隔'+(S.interval/10).toFixed(1)+'s';
+ $('curEst').innerText='推定 約'+estSec(S).toFixed(0)+'秒'+(S.kind==='contest'?'（目標 '+c.target+'）':'');
+}
+function syncMinus(v){
+ const sl=$('minusCountLevel'),mx=maxMinus(+$('mouths').value);
+ sl.max=mx;sl.value=Math.min(v,mx);$('minusCountVal').innerText=sl.value+'回';
+}
+function readForm(){
+ return{kind:$('kind').value,preset:+$('preset').value,mode:$('digitMode').value,mouths:+$('mouths').value,minusCount:+$('minusCountLevel').value,speed:+$('speedLevel').value,interval:+$('intervalLevel').value,voice:$('voice').value};
+}
+function refresh(e){
+ if(e&&e.target&&e.target.id==='mouths')syncMinus(+$('minusCountLevel').value);
+ if(e&&e.target&&(e.target.id==='kind'||e.target.id==='preset')){
+  S.ps[fk]={speed:+$('speedLevel').value,interval:+$('intervalLevel').value};
+  fk=pk(readForm());const v=S.ps[fk];
+  if(v){$('speedLevel').value=v.speed;$('intervalLevel').value=v.interval}
+ }
+ const f=readForm();
+ $('boxC').style.display=f.kind==='contest'?'block':'none';
+ $('boxF').style.display=f.kind==='free'?'block':'none';
+ $('minusCountVal').innerText=f.minusCount+'回';
+ $('speedVal').innerText=f.speed;$('intervalVal').innerText=(f.interval/10).toFixed(1)+'s';
+ $('estBox').innerText='推定 約'+estSec(f).toFixed(0)+'秒（Start with後・目安）';
+}
+function openSettings(){
+ $('kind').value=S.kind;$('preset').value=S.preset;$('digitMode').value=S.mode;$('mouths').value=S.mouths;
+ fillVoices(S.voice);fk=pk(S);syncMinus(S.minusCount);$('speedLevel').value=S.speed;$('intervalLevel').value=S.interval;
+ refresh();$('settingsModal').style.display='block';
+}
+function fillVoices(cur){
+ const sel=$('voice');sel.length=1;
+ speechSynthesis.getVoices().filter(v=>/^en/i.test(v.lang)).forEach(v=>sel.add(new Option(v.name+' ('+v.lang+')',v.name)));
+ sel.value=[...sel.options].some(o=>o.value===cur)?cur:'';
+}
+function closeSettings(){
+ const ps=S.ps||{};S=readForm();S.minusCount=Math.min(S.minusCount,maxMinus(S.mouths));
+ ps[pk(S)]={speed:S.speed,interval:S.interval};S.ps=ps;
+ try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
+ $('settingsModal').style.display='none';updateUI();generateNewProblem();
+}
+
+function generateNewProblem(){
+ stopSpeaking();
+ const p=makeProblem(cfgOf(S));terms=p.terms;answer=p.answer;
+ $('problemDisplay').style.display='none';$('placeholder').style.display='block';
+ $('answerDisplay').style.display='none';$('timerDisplay').style.display='none';
+ $('problemDisplay').innerText=terms.map(t=>(t.isMinus?'-':'')+t.val.toLocaleString()).join('\n');
+}
+function setBusy(b){$('btnSpeak').style.display=b?'none':'block';$('btnStop').style.display=b?'block':'none'}
+function mkU(text,rate){
+ const u=new SpeechSynthesisUtterance(text);u.lang='en-US';u.rate=rate;
+ const v=S.voice&&speechSynthesis.getVoices().find(x=>x.name===S.voice);if(v){u.voice=v;u.lang=v.lang}
+ return u;
+}
+function startSpeaking(){
+ stopSpeaking();
+ const id=++run,rate=rateOf(S.speed),b=buildScript(terms,S.interval),syl=sylOf(b.s),tgt=cfgOf(S).target;
+ setBusy(true);$('timerDisplay').style.display='block';$('timerDisplay').innerText='0.0s';
+ const u1=mkU('Start with.',rate),u2=mkU(b.s,rate);
+ u1.onend=()=>{if(id===run)synth.speak(u2)};
+ u2.onstart=()=>{ // 「Start with」の後から計測
+  if(id!==run)return;t0=Date.now();clearInterval(tm);
+  tm=setInterval(()=>{$('timerDisplay').innerText=((Date.now()-t0)/1000).toFixed(1)+'s'},100);
+ };
+ u2.onend=()=>{
+  if(id!==run)return;clearInterval(tm);
+  const T=(Date.now()-t0)/1000;
+  $('timerDisplay').innerText='実測 '+T.toFixed(1)+'s'+(tgt?'（目標 '+tgt+'）':'');
+  setBusy(false);learn(T,syl/rate,b.commas,S.speed,S.voice);
+ };
+ u1.onerror=u2.onerror=()=>{if(id===run){clearInterval(tm);setBusy(false)}};
+ synth.speak(u1);
+}
+function stopSpeaking(){run++;synth.cancel();clearInterval(tm);setBusy(false)}
+function showAnswer(){
+ $('problemDisplay').style.display='block';$('placeholder').style.display='none';
+ $('answerDisplay').style.display='block';$('answerDisplay').innerText=answer.toLocaleString();
+}
+
+// 動作確認用：ブラウザのコンソールで selfTest() を実行
+window.selfTest=(n=200)=>{
+ const cs=[],bad=[];
+ presets.forEach((_,i)=>cs.push(cfgOf({kind:'contest',preset:i})));
+ Object.keys(digitModes).forEach(md=>[4,5,10,15].forEach(m=>cs.push(cfgOf({kind:'free',mode:md,mouths:m,minusCount:9}))));
+ cs.forEach(c=>{for(let q=0;q<n;q++){
+  const t=makeProblem(c).terms,e=[],mr=[];let sum=0;
+  t.forEach((x,i)=>{
+   sum+=x.isMinus?-x.val:x.val;if(sum<1)e.push('負');if(x.isMinus)mr.push(i);
+   const s=String(x.val);
+   if(/(\d)\1/.test(s))e.push('連続数字');
+   if(s.length<=10&&new Set(s).size<s.length)e.push('重複');
+   if(s.length<c.min||s.length>c.max)e.push('桁範囲');
+  });
+  if(t[1]&&t[1].isMinus)e.push('2口目');if(t[t.length-1].isMinus)e.push('最終口');
+  if(maxRun(mr)>3)e.push('4連続');if(mr.length!==c.k)e.push('引算数'+mr.length+'/'+c.k);
+  if(c.fixedDigits&&t.map(x=>String(x.val).length).sort((a,b)=>a-b).join()!==c.fixedDigits.slice().sort((a,b)=>a-b).join())e.push('桁構成');
+  if(e.length)bad.push(c.label+' '+c.m+'口: '+[...new Set(e)].join(','));
+ }});
+ console.log(bad.length?bad.slice(0,30):'OK 全条件クリア（'+cs.length*n+'問）');
+ return bad.length;
+};
+
+window.onload=()=>{
+ presets.forEach((p,i)=>$('preset').add(new Option(p[0]+'（目標 '+p[4]+'）',i)));
+ for(const k in digitModes)$('digitMode').add(new Option(digitModes[k],k));
+ for(let i=2;i<=15;i++)$('mouths').add(new Option(i+'口',i));
+ $('settingsModal').addEventListener('input',refresh);
+ window.onbeforeunload=()=>synth.cancel();
+ synth.onvoiceschanged=()=>{if($('settingsModal').style.display==='block')fillVoices($('voice').value)};
+ loadSettings();updateUI();generateNewProblem();
+};
+</script>
+</body>
+</html>
