@@ -60,7 +60,7 @@ select,input[type=range]{width:100%;padding:10px;margin:5px 0;box-sizing:border-
 <input type="range" id="minusCountLevel" min="0" max="1" value="0">
 </div>
 <label>声の速さ <span id="speedVal" class="val">5</span></label>
-<input type="range" id="speedLevel" min="1" max="8" step="0.5" value="5">
+<input type="range" id="speedLevel" min="1" max="10" step="0.5" value="5">
 <label>読上間隔 <span id="intervalVal" class="val">0.5s</span></label>
 <input type="range" id="intervalLevel" min="0" max="20" value="5">
 <div id="estBox">推定 ---</div>
@@ -93,7 +93,7 @@ const gapOf=i=>presets[i][3]===5?10:0; // 本番の数字間：5口は約1.0秒�
 const tsec=t=>{const n=parseInt(t);return /台前半/.test(t)?n+2:n};
 function autoSpeed(i,iv,vn){
  const t=tsec(presets[i][4]);let best=5,bd=1e9;
- for(let sp=1;sp<=8;sp+=.5){const d=Math.abs(estSec({kind:'contest',preset:i,speed:sp,interval:iv,voice:vn})-t);if(d<bd){bd=d;best=sp}}
+ for(let sp=1;sp<=10;sp+=.5){const d=Math.abs(estSec({kind:'contest',preset:i,speed:sp,interval:iv,voice:vn})-t);if(d<bd){bd=d;best=sp}}
  return best;
 }
 const maxRun=p=>{let r=1,b=p.length?1:0;for(let i=1;i<p.length;i++){r=p[i]===p[i-1]+1?r+1:1;b=Math.max(b,r)}return b};
@@ -214,9 +214,9 @@ function loadSettings(){
  try{const c=JSON.parse(localStorage.getItem(KK));if(c&&c.h){K=c;K.bh=K.bh||[]}}catch(e){}
  if(!digitModes[S.mode])S.mode='range4to7';
  if(!presets[S.preset])S.preset=0;
- S.speed=Math.min(8,Math.max(1,+S.speed||5));S.voice='';
+ S.speed=Math.min(10,Math.max(1,+S.speed||5));S.voice='';
  S.ps=S.ps||{};const e=S.ps[pk(S)];
- if(e){S.speed=Math.min(8,Math.max(1,+e.speed||5));S.interval=+e.interval>=0?+e.interval:5}
+ if(e){S.speed=Math.min(10,Math.max(1,+e.speed||5));S.interval=+e.interval>=0?+e.interval:5}
  S.ps[pk(S)]={speed:S.speed,interval:S.interval};
  S.minusCount=Math.min(S.minusCount||0,maxMinus(S.mouths));
 }
