@@ -76,13 +76,21 @@ const digitModes={fixed1:'1桁そろい',fixed2:'2桁そろい',fixed3:'3桁そ�
 const presets=[['7～13桁 10口',7,13,10,'30秒台前半'],['7～13桁 10口',7,13,10,'40秒程度'],['7～13桁 10口',7,13,10,'45秒程度'],['9～13桁 5口',9,13,5,'20秒程度'],['9～13桁 5口',9,13,5,'25秒程度'],['7～11桁 5口',7,11,5,'25秒程度'],['5～8桁 5口',5,8,5,'25秒程度'],['4～7桁 5口',4,7,5,'25秒程度'],['3～6桁 5口',3,6,5,'25秒程度'],['3～5桁 5口',3,5,5,'25秒程度'],['3桁そろい 5口',3,3,5,'20秒程度'],['2桁そろい 5口',2,2,5,'15秒程度']];
 const SY={seven:2,eleven:3,thirteen:2,fourteen:2,fifteen:2,sixteen:2,seventeen:3,eighteen:2,nineteen:2,twenty:2,thirty:2,forty:2,fifty:2,sixty:2,seventy:3,eighty:2,ninety:2,hundred:2,thousand:2,million:2,billion:2,trillion:2,minus:2};
 let S={ps:{},kind:'contest',preset:0,mode:'range4to7',mouths:5,speed:5,interval:5,minusCount:0};
-let K={b:.15,h:{}},terms=[],answer=0,run=0,t0=0,tm=null;
+let K={b:.15,bh:[],h:{}},terms=[],answer=0,run=0,t0=0,tm=null;
 const synth=window.speechSynthesis,bags={};
 
 const shuf=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
 const maxMinus=m=>Math.max(0,Math.min(5,Math.floor(m/2),m-3)); // 2口目・最終口は足し算
 const pk=s=>s.kind==='contest'?'c'+s.preset:'f'; // 出題ごとに速さ・間隔を記憶するキー
-let fk='';
+let fk='',dirty={};
+// 目標秒数に近い速さを、この端末の実測（速さごとの学習）から選ぶ
+const gapOf=i=>presets[i][3]===5?10:0; // 本番の数字間：5口は約1.0秒、10口は間をほぼ空けない
+const tsec=t=>{const n=parseInt(t);return /台前半/.test(t)?n+2:n};
+function autoSpeed(i,iv,vn){
+ const t=tsec(presets[i][4]);let best=5,bd=1e9;
+ for(let sp=1;sp<=8;sp+=.5){const d=Math.abs(estSec({kind:'contest',preset:i,speed:sp,interval:iv,voice:vn})-t);if(d<bd){bd=d;best=sp}}
+ return best;
+}
 const maxRun=p=>{let r=1,b=p.length?1:0;for(let i=1;i<p.length;i++){r=p[i]===p[i-1]+1?r+1:1;b=Math.max(b,r)}return b};
 
 function cfgOf(s){
@@ -183,19 +191,22 @@ function kFor(sp,vn){
  return m(lo!==undefined?lo:hi);
 }
 function learn(T,x,cm,sp,vn){
- const ki=(T-cm*K.b)/x;
- if(ki>.03&&ki<2){
-  const H=K.h[vn||'']||(K.h[vn||'']={});
-  (H[sp]=H[sp]||[]).push(ki);if(H[sp].length>10)H[sp].shift();
-  try{localStorage.setItem(KK,JSON.stringify(K))}catch(e){}
-  updateUI();
+ const H=K.h[vn||'']||(K.h[vn||'']={}),kk=H[sp]&&H[sp].length?H[sp].reduce((a,b)=>a+b)/H[sp].length:0;
+ if(cm>0&&kk){ // 速さの学習値があれば、間隔の無音（カンマ1つの長さ）を学習
+  const b=(T-kk*x)/cm;
+  if(b>.02&&b<1.5){K.bh.push(b);if(K.bh.length>20)K.bh.shift();K.b=K.bh.reduce((a,c)=>a+c)/K.bh.length}
+ }else{
+  const ki=(T-cm*K.b)/x;
+  if(ki>.03&&ki<2){(H[sp]=H[sp]||[]).push(ki);if(H[sp].length>10)H[sp].shift()}
  }
+ try{localStorage.setItem(KK,JSON.stringify(K))}catch(e){}
+ updateUI();
 }
 
 function loadSettings(){
  try{const sv=localStorage.getItem(KEY)||localStorage.getItem(OLD);
   if(sv){const o=JSON.parse(sv);Object.assign(S,o);if(!o.kind)S.kind='free'}}catch(e){}
- try{const c=JSON.parse(localStorage.getItem(KK));if(c&&c.h)K=c}catch(e){}
+ try{const c=JSON.parse(localStorage.getItem(KK));if(c&&c.h){K=c;K.bh=K.bh||[]}}catch(e){}
  if(!digitModes[S.mode])S.mode='range4to7';
  if(!presets[S.preset])S.preset=0;
  S.speed=Math.min(8,Math.max(1,+S.speed||5));S.voice=S.voice||'';
@@ -218,10 +229,12 @@ function readForm(){
 }
 function refresh(e){
  if(e&&e.target&&e.target.id==='mouths')syncMinus(+$('minusCountLevel').value);
+ if(e&&e.target&&(e.target.id==='speedLevel'||e.target.id==='intervalLevel'))dirty[fk]=1;
  if(e&&e.target&&(e.target.id==='kind'||e.target.id==='preset')){
-  S.ps[fk]={speed:+$('speedLevel').value,interval:+$('intervalLevel').value};
-  fk=pk(readForm());const v=S.ps[fk];
+  if(dirty[fk]||S.ps[fk])S.ps[fk]={speed:+$('speedLevel').value,interval:+$('intervalLevel').value};
+  const f2=readForm();fk=pk(f2);const v=S.ps[fk];
   if(v){$('speedLevel').value=v.speed;$('intervalLevel').value=v.interval}
+  else if(f2.kind==='contest'){const g=gapOf(f2.preset);$('intervalLevel').value=g;$('speedLevel').value=autoSpeed(f2.preset,g,f2.voice)}
  }
  const f=readForm();
  $('boxC').style.display=f.kind==='contest'?'block':'none';
@@ -232,7 +245,7 @@ function refresh(e){
 }
 function openSettings(){
  $('kind').value=S.kind;$('preset').value=S.preset;$('digitMode').value=S.mode;$('mouths').value=S.mouths;
- fillVoices(S.voice);fk=pk(S);syncMinus(S.minusCount);$('speedLevel').value=S.speed;$('intervalLevel').value=S.interval;
+ fillVoices(S.voice);fk=pk(S);dirty={};syncMinus(S.minusCount);$('speedLevel').value=S.speed;$('intervalLevel').value=S.interval;
  refresh();$('settingsModal').style.display='block';
 }
 function fillVoices(cur){
