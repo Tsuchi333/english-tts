@@ -79,6 +79,8 @@ const KEY='yomiageV10',OLD='yomiageV9',KK='yomiageV10cal2';
 const digitModes={fixed1:'1桁そろい',fixed2:'2桁そろい',fixed3:'3桁そろい',fixed4:'4桁そろい',fixed5:'5桁そろい',range3to5:'3～5桁',range3to6:'3～6桁',range4to7:'4～7桁',range5to8:'5～8桁',range7to11:'7～11桁',range9to13:'9～13桁',range7to13:'7～13桁'};
 // [名称,最小桁,最大桁,口数,目標秒数]
 const presets=[['7～13桁 10口',7,13,10,'30秒台前半'],['7～13桁 10口',7,13,10,'40秒程度'],['7～13桁 10口',7,13,10,'45秒程度'],['9～13桁 5口',9,13,5,'20秒程度'],['9～13桁 5口',9,13,5,'25秒程度'],['7～11桁 5口',7,11,5,'25秒程度'],['5～8桁 5口',5,8,5,'25秒程度'],['4～7桁 5口',4,7,5,'25秒程度'],['3～6桁 5口',3,6,5,'25秒程度'],['3～5桁 5口',3,5,5,'25秒程度'],['3桁そろい 5口',3,3,5,'20秒程度'],['2桁そろい 5口',2,2,5,'15秒程度']];
+// 本番10口のひき算の位置（0始まり）：2口続く塊と3口続く塊が1つずつ（3～9口目）。2025年・過去問17問すべてがこの6通り
+const PAT10=[[2,3,5,6,7],[2,3,6,7,8],[3,4,6,7,8],[2,3,4,6,7],[2,3,4,7,8],[3,4,5,7,8]];
 const SY={seven:2,eleven:3,thirteen:2,fourteen:2,fifteen:2,sixteen:2,seventeen:3,eighteen:2,nineteen:2,twenty:2,thirty:2,forty:2,fifty:2,sixty:2,seventy:3,eighty:2,ninety:2,hundred:2,thousand:2,million:2,billion:2,trillion:2,minus:2};
 let S={ps:{},kind:'contest',preset:0,mode:'range4to7',mouths:5,speed:5,interval:5,minusCount:0};
 let K={b:.15,bh:[],h:{}},terms=[],answer=0,run=0,t0=0,tm=null;
@@ -100,7 +102,7 @@ const maxRun=p=>{let r=1,b=p.length?1:0;for(let i=1;i<p.length;i++){r=p[i]===p[i
 
 function cfgOf(s){
  if(s.kind==='contest'){const p=presets[s.preset],five=p[3]===5;
-  return{label:p[0]+'（'+p[4]+'）',target:p[4],min:p[1],max:p[2],m:p[3],k:five?2:5,fixedPos:five?[2,3]:null,
+  return{label:p[0]+'（'+p[4]+'）',target:p[4],min:p[1],max:p[2],m:p[3],k:five?2:5,fixedPos:five?[2,3]:null,patterns:five?null:PAT10,
    fixedDigits:(p[3]===10&&p[1]===7&&p[2]===13)?[7,8,9,10,11,12,13,7,12,13]:null}}
  let mn,mx;
  if(s.mode.startsWith('fixed'))mn=mx=+s.mode.slice(5);else{const r=s.mode.slice(5).split('to');mn=+r[0];mx=+r[1]}
@@ -126,6 +128,7 @@ function mkNum(d){
  return s.join('');
 }
 function pickMinus(c){
+ if(c.patterns)return c.patterns[Math.floor(Math.random()*c.patterns.length)];
  if(c.fixedPos)return c.fixedPos;
  const cand=[];for(let i=2;i<=c.m-2;i++)cand.push(i);
  for(let t=0;t<200;t++){const p=shuf(cand.slice()).slice(0,c.k).sort((a,b)=>a-b);if(maxRun(p)<=3)return p}
@@ -145,7 +148,7 @@ function makeProblem(c){
    }
    if(ok)return{terms:tt,answer:sum};
   }
-  if(c.fixedPos)break;
+  if(c.fixedPos||c.patterns)break;
  }
  const tt=L.map(d=>({val:+mkNum(d),isMinus:false}));
  return{terms:tt,answer:tt.reduce((a,x)=>a+x.val,0)};
@@ -327,7 +330,7 @@ window.selfTest=(n=200)=>{
    if(s.length<c.min||s.length>c.max)e.push('桁範囲');
   });
   if(t[1]&&t[1].isMinus)e.push('2口目');if(t[t.length-1].isMinus)e.push('最終口');
-  if(maxRun(mr)>3)e.push('4連続');if(mr.length!==c.k)e.push('引算数'+mr.length+'/'+c.k);
+  if(maxRun(mr)>3)e.push('4連続');if(c.patterns&&!c.patterns.some(q=>q.join()===mr.join()))e.push('パターン外');if(mr.length!==c.k)e.push('引算数'+mr.length+'/'+c.k);
   if(c.fixedDigits&&t.map(x=>String(x.val).length).sort((a,b)=>a-b).join()!==c.fixedDigits.slice().sort((a,b)=>a-b).join())e.push('桁構成');
   if(e.length)bad.push(c.label+' '+c.m+'口: '+[...new Set(e)].join(','));
  }});
